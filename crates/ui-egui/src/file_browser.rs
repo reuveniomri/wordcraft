@@ -47,7 +47,8 @@ pub(crate) struct Listing {
 
 /// Whether `path` has one of `exts` (case-insensitive); `*` takes any file.
 pub(crate) fn matches(path: &Path, exts: &[String]) -> bool {
-    exts.iter().any(|e| e == "*") || path.extension().and_then(|e| e.to_str()).is_some_and(|e| exts.iter().any(|x| x.eq_ignore_ascii_case(e)))
+    exts.iter().any(|e| e == "*")
+        || path.extension().and_then(std::ffi::OsStr::to_str).is_some_and(|e| exts.iter().any(|x| x.eq_ignore_ascii_case(e)))
 }
 
 /// The subfolders and the files with one of `exts` in `dir`, at most `cap` of them, folders first
@@ -151,7 +152,7 @@ impl FileBrowser {
                 (String::new(), open_filters(purpose).iter().map(|(l, e)| ((*l).to_string(), e.iter().map(|x| (*x).to_string()).collect())).collect())
             }
             FileDialogRequest::Save { name, .. } => {
-                let ext = Path::new(name).extension().and_then(|e| e.to_str()).filter(|e| !e.is_empty());
+                let ext = Path::new(name).extension().and_then(std::ffi::OsStr::to_str).filter(|e| !e.is_empty());
                 let mut f: Vec<(String, Vec<String>)> = ext.map(|e| (format!("*.{e}"), vec![e.to_string()])).into_iter().collect();
                 f.push(("All files".into(), vec!["*".into()]));
                 (name.clone(), f)
@@ -286,7 +287,7 @@ impl WordApp {
                 FileDialogRequest::Save { name: self.default_save_name(), dir: None },
                 AfterPick::SaveAs { after: crate::file_dialogs::AfterSave::Nothing, document: self.session.document_id() },
             ),
-            _ => (FileDialogRequest::Open { purpose: "document".into() }, AfterPick::OpenDocument),
+            _ => (FileDialogRequest::Open { purpose: "document".into() }, AfterPick::OpenDocument { document: self.session.document_id() }),
         };
         self.show_file_browser(req, after, false);
     }
@@ -309,7 +310,7 @@ pub(crate) fn show(app: &mut WordApp, ctx: &egui::Context) {
     let t = Tokens::get(ctx);
     let mut done: Option<Option<PathBuf>> = None;
     let window = egui::Window::new(tl!(b.title()))
-        .id(egui::Id::new("builtin_file_browser"))
+        .id(egui::Id::unique("builtin_file_browser"))
         .collapsible(false)
         .resizable(false)
         .anchor(Align2::CENTER_CENTER, vec2(0.0, -20.0));
@@ -339,15 +340,15 @@ fn body(ui: &mut Ui, b: &mut FileBrowser, t: &Tokens) -> Option<Option<PathBuf>>
     }
     let mut location_done = false;
     ui.horizontal(|ui| {
-        if icon_button(ui, t, "chevronUp", tl!("Up one level"), b.dir.parent().is_some()) {
+        if icon_button(ui, t, "chevronUp", &tl!("Up one level"), b.dir.parent().is_some()) {
             b.up();
         }
-        if icon_button(ui, t, "homeFolder", tl!("Home folder"), true)
+        if icon_button(ui, t, "homeFolder", &tl!("Home folder"), true)
             && let Some(h) = home()
         {
             b.navigate(h);
         }
-        let r = ui.add(egui::TextEdit::singleline(&mut b.location).desired_width(f32::INFINITY));
+        let r = ui.add(egui::TextEdit::singleline(&mut b.location).desired_width(f32::INFINITY)).accessible_name(tl!("Folder path"));
         if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             location_done = true;
             let typed = b.location.clone();
@@ -408,14 +409,14 @@ fn body(ui: &mut Ui, b: &mut FileBrowser, t: &Tokens) -> Option<Option<PathBuf>>
         b.navigate(dir);
     }
     let message = match (&b.listing, &b.note) {
-        (_, Note::NotFound(name)) => Some((crate::i18n::fmt(tl!("{name} wasn't found."), &[("name", name)]), t.red)),
+        (_, Note::NotFound(name)) => Some((crate::i18n::fmt(&tl!("{name} wasn't found."), &[("name", name)]), t.red)),
         (_, Note::Replace(p)) => {
             let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            Some((crate::i18n::fmt(tl!("{name} already exists. Choose Save again to replace it."), &[("name", &name)]), t.red))
+            Some((crate::i18n::fmt(&tl!("{name} already exists. Choose Save again to replace it."), &[("name", &name)]), t.red))
         }
-        (Err(e), _) => Some((crate::i18n::fmt(tl!("This folder can't be read: {error}"), &[("error", e)]), t.red)),
+        (Err(e), _) => Some((crate::i18n::fmt(&tl!("This folder can't be read: {error}"), &[("error", e)]), t.red)),
         (Ok(l), _) if l.truncated => {
-            Some((crate::i18n::fmt(tl!("Showing the first {count} items."), &[("count", &l.entries.len().to_string())]), t.text_dim))
+            Some((crate::i18n::fmt(&tl!("Showing the first {count} items."), &[("count", &l.entries.len().to_string())]), t.text_dim))
         }
         _ => None,
     };
@@ -439,11 +440,16 @@ fn body(ui: &mut Ui, b: &mut FileBrowser, t: &Tokens) -> Option<Option<PathBuf>>
         }
         let before = b.filter;
         let current = b.filters.get(b.filter).map(|(l, _)| tl!(l.as_str()).to_string()).unwrap_or_default();
-        egui::ComboBox::from_id_salt("builtin_file_browser_type").selected_text(current).width(150.0).show_ui(ui, |ui| {
-            for (i, (l, _)) in b.filters.iter().enumerate() {
-                ui.selectable_value(&mut b.filter, i, tl!(l.as_str()));
-            }
-        });
+        craft_ui::ComboBox::from_id_salt("builtin_file_browser_type")
+            .selected_text(current)
+            .width(150.0)
+            .show_ui(ui, |ui| {
+                for (i, (l, _)) in b.filters.iter().enumerate() {
+                    ui.selectable_value(&mut b.filter, i, tl!(l.as_str()));
+                }
+            })
+            .response
+            .accessible_name(tl!("File type"));
         refilter = b.filter != before;
     });
     if refilter {
@@ -453,9 +459,9 @@ fn body(ui: &mut Ui, b: &mut FileBrowser, t: &Tokens) -> Option<Option<PathBuf>>
     let mut cancel = ui.input(|i| i.key_pressed(egui::Key::Escape));
     let enter = !location_done && ui.input(|i| i.key_pressed(egui::Key::Enter));
     ui.horizontal(|ui| {
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.with_layout(crate::i18n::trailing_layout(egui::Align::Center), |ui| {
             let (ok, cancelb) =
-                crate::dialogs::ok_cancel_responses(ui, |ui| ui.add(crate::widgets::primary_button(ui, tl!(b.ok_label()))), tl!("Cancel"));
+                crate::dialogs::ok_cancel_responses(ui, |ui| ui.add(crate::widgets::primary_button(ui, tl!(b.ok_label()))), &tl!("Cancel"));
             cancel |= cancelb.clicked();
             pick |= ok.clicked() || enter;
         });
@@ -529,7 +535,7 @@ mod tests {
         std::fs::create_dir(dir.join("drafts")).unwrap();
         std::fs::write(dir.join("drafts").join("old.docx"), b"x").unwrap();
         let req = FileDialogRequest::Save { name: "Document1.docx".into(), dir: None };
-        let mut b = FileBrowser::new(req, AfterPick::OpenDocument, dir.clone(), false);
+        let mut b = FileBrowser::new(req, AfterPick::OpenDocument { document: 0 }, dir.clone(), false);
         b.name = "drafts".into();
         assert_eq!(b.accept(), Step::Stay);
         assert_eq!(b.dir, dir.join("drafts"));
@@ -577,7 +583,8 @@ mod tests {
     fn an_empty_folder_says_there_are_no_items() {
         let dir = scratch("empty_state");
         let mut a = WordApp::new(Session::new(wordcraft_doc::Document::new()), Services::default());
-        let mut b = FileBrowser::new(FileDialogRequest::Open { purpose: "document".into() }, AfterPick::OpenDocument, dir.clone(), false);
+        let mut b =
+            FileBrowser::new(FileDialogRequest::Open { purpose: "document".into() }, AfterPick::OpenDocument { document: 0 }, dir.clone(), false);
         b.navigate(dir.clone());
         assert!(matches!(&b.listing, Ok(l) if l.entries.is_empty()), "the folder starts empty");
         a.file_browser.open = Some(Box::new(b));

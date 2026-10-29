@@ -212,7 +212,7 @@ impl Default for View {
 
 /// About ▸ Contributors: a name toggle, a sort, and the list as a grab bag or a table.
 pub fn contributors_ui(ui: &mut egui::Ui) {
-    let id = egui::Id::new("credits_view");
+    let id = egui::Id::unique("credits_view");
     let mut v = ui.data_mut(|d| d.get_temp::<View>(id)).unwrap_or_default();
     ui.horizontal_wrapped(|ui| {
         ui.label(tl!("Show"));
@@ -223,7 +223,7 @@ pub fn contributors_ui(ui: &mut egui::Ui) {
         }
         ui.separator();
         ui.label(tl!("Sort"));
-        egui::ComboBox::from_id_salt("credits_sort").selected_text(tl!(v.key.label().0)).show_ui(ui, |ui| {
+        craft_ui::ComboBox::from_id_salt("credits_sort").selected_text(tl!(v.key.label().0)).show_ui(ui, |ui| {
             for k in SortKey::ALL {
                 if ui.selectable_label(v.key == k, tl!(k.label().0)).clicked() {
                     v.key = k;
@@ -244,7 +244,7 @@ pub fn contributors_ui(ui: &mut egui::Ui) {
     });
     let list = sorted(CONTRIBUTORS, v.names, v.key, v.ascending);
     let summary = crate::i18n::fmt(
-        tl!("{contributors} contributors · {commits} commits"),
+        &tl!("{contributors} contributors · {commits} commits"),
         &[("contributors", &list.len().to_string()), ("commits", &group(TOTAL_COMMITS))],
     );
     ui.label(RichText::new(summary).small().weak());
