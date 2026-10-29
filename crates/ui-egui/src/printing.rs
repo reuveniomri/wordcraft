@@ -19,6 +19,8 @@ pub fn commands(app: &crate::WordApp) -> Vec<serde_json::Value> {
     ]
 }
 
+/// Builds translated print labels, draws the shared print-settings panel, and shows the current
+/// feedback message.
 pub fn show(state: &mut State, ui: &mut egui::Ui, discover: &Discover, translate: impl Fn(&str) -> String) {
     let labels = Labels {
         printer: &translate("Printer"),
@@ -32,7 +34,7 @@ pub fn show(state: &mut State, ui: &mut egui::Ui, discover: &Discover, translate
         short_edge: &translate("Two-sided: short edge"),
         grayscale: &translate("Grayscale"),
     };
-    state.show(ui, egui::Id::new("wordcraft_print_settings"), discover, &labels);
+    state.show(ui, egui::Id::unique("wordcraft_print_settings"), discover, &labels);
     if let Some(message) = &state.message {
         ui.label(feedback(message, translate));
     }
@@ -220,7 +222,7 @@ pub fn submit(app: &mut crate::WordApp, params: &serde_json::Value) -> Result<se
         }
         Err(error) => {
             log::error!("print failed: {error}");
-            let msg = crate::i18n::fmt(tl!("Print failed: {error}"), &[("error", &error)]);
+            let msg = crate::i18n::fmt(&tl!("Print failed: {error}"), &[("error", &error)]);
             app.status(msg.clone());
             Err(msg)
         }

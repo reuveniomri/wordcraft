@@ -388,7 +388,7 @@ pub fn replay_bar(app: &mut WordApp, ui: &Ui, area: Rect) {
     let Some(r) = app.canvas.ink_ui.replay.as_ref() else { return };
     let (playing, n, total) = (r.playing, r.started(), r.strokes.len());
     let mut action = None;
-    egui::Area::new(egui::Id::new("ink_replay_bar"))
+    egui::Area::new(egui::Id::unique("ink_replay_bar"))
         .order(egui::Order::Foreground)
         .pivot(Align2::CENTER_BOTTOM)
         .fixed_pos(pos2(area.center().x, area.max.y - 18.0))
@@ -406,7 +406,7 @@ pub fn replay_bar(app: &mut WordApp, ui: &Ui, area: Rect) {
                     if crate::widgets::icon_button(ui, "replayForward", &tl!("Forward")).clicked() {
                         action = Some("forward");
                     }
-                    let label = crate::i18n::fmt(tl!("Stroke {n} of {total}"), &[("n", &n.to_string()), ("total", &total.to_string())]);
+                    let label = crate::i18n::fmt(&tl!("Stroke {n} of {total}"), &[("n", &n.to_string()), ("total", &total.to_string())]);
                     ui.label(label);
                     if crate::widgets::icon_button(ui, "close", &tl!("Close")).clicked() {
                         action = Some("close");
